@@ -1,11 +1,7 @@
 package com.cb.fts.sample;
 
-import com.cb.fts.sample.entities.Movie;
-import com.cb.fts.sample.entities.vo.SearchResult;
+import com.cb.fts.sample.entities.vo.FTSResult;
 import com.cb.fts.sample.service.MovieService;
-import com.couchbase.client.java.search.result.SearchQueryRow;
-import com.couchbase.client.java.search.result.hits.HitLocation;
-import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
@@ -70,7 +66,7 @@ public class MovieSearchIntegrationTest extends SampleApplicationTests {
 
 
 
-    public void printResults(List<SearchResult> movies){
+    public void printResults(List<FTSResult> movies){
 //        int counter = 1;
 //
 //        for(SearchResult result: movies) {
@@ -83,20 +79,20 @@ public class MovieSearchIntegrationTest extends SampleApplicationTests {
 //        }
     }
 
-    public void printRow(SearchQueryRow row){
-        String padding = "     ";
-        String doublePadding = padding+padding;
-        System.out.println(padding+"score: "+row.score());
-
-        System.out.println(padding+"Hit Locations: ");
-
-
-
-        for (HitLocation hitLocation: row.locations().getAll()) {
-            System.out.println(doublePadding+"field:"+ hitLocation.field() );
-            System.out.println(doublePadding+"term:"+ hitLocation.term() );
-            System.out.println(doublePadding+"fragment:"+ row.fragments().get(hitLocation.field()));
-            System.out.println(doublePadding+"-----------------------------");
-        }
-    }
+//    public void printRow(SearchQueryRow row){
+//        String padding = "     ";
+//        String doublePadding = padding+padding;
+//        System.out.println(padding+"score: "+row.score());
+//
+//        System.out.println(padding+"Hit Locations: ");
+//
+//
+//
+//        for (HitLocation hitLocation: row.locations().getAll()) {
+//            System.out.println(doublePadding+"field:"+ hitLocation.field() );
+//            System.out.println(doublePadding+"term:"+ hitLocation.term() );
+//            System.out.println(doublePadding+"fragment:"+ row.fragments().get(hitLocation.field()));
+//            System.out.println(doublePadding+"-----------------------------");
+//        }
+//    }
 }

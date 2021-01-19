@@ -33,6 +33,12 @@ public class MovieServiceImpl implements MovieService {
     private static final String indexName = "movies_all_index";
     private static final String movies_shingle = "movies_shingle";
 
+    private DisjunctionQuery getDisjunction(String words, String field) {
+        MatchQuery query = SearchQuery.match(words).field(field);
+        MatchQuery queryFuzzy = SearchQuery.match(words).field(field).fuzziness(1);
+        return SearchQuery.disjuncts(query, queryFuzzy);
+    }
+
     @Override
     public Result searchQuery(String phrase, String filters) {
         Map<String,List<String>> facets = getFilters(filters);
@@ -42,9 +48,7 @@ public class MovieServiceImpl implements MovieService {
 
 
     private Result search1(String word){
-
         QueryStringQuery simpleQuery = SearchQuery.queryString(word);
-
         SearchResult result = cluster.searchQuery(indexName, simpleQuery, SearchOptions.searchOptions().limit(30).highlight());
         return  getSearchResults(result);
     }
@@ -890,11 +894,11 @@ public class MovieServiceImpl implements MovieService {
 
     private DisjunctionQuery boostWeightedRating() {
 
-        NumericRangeQuery weightedRating1 = SearchQuery.numericRange().field("weightedRating").boost(1.25);
+        NumericRangeQuery weightedRating1 = SearchQuery.numericRange().field("weightedRating").boost(1.4);
         weightedRating1.max(10);
         weightedRating1.min(7);
 
-        NumericRangeQuery weightedRating2 = SearchQuery.numericRange().field("weightedRating").boost(1.10);
+        NumericRangeQuery weightedRating2 = SearchQuery.numericRange().field("weightedRating").boost(1.1);
         weightedRating2.max(6.9999);
         weightedRating2.min(5);
 
@@ -913,11 +917,7 @@ public class MovieServiceImpl implements MovieService {
     }
 
 
-    private DisjunctionQuery getDisjunction(String words, String field) {
-        MatchQuery query = SearchQuery.match(words).field(field);
-        MatchQuery queryFuzzy = SearchQuery.match(words).field(field).fuzziness(1);
-        return SearchQuery.disjuncts(query, queryFuzzy);
-    }
+
 
 
     private DisjunctionQuery getDisjunction(String words, String field, double boost) {
