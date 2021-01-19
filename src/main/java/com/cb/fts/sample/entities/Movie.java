@@ -1,9 +1,9 @@
 package com.cb.fts.sample.entities;
 
-import com.couchbase.client.java.repository.annotation.Field;
 import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.couchbase.core.mapping.Document;
+import org.springframework.data.couchbase.core.mapping.Field;
 
 import java.io.Serializable;
 import java.util.List;
@@ -25,6 +25,7 @@ public class Movie implements Serializable {
     private String backdropPath;
     private List<Credit> crew;
     private List<Actor> cast;
+    private List<Actor> castAdjusted;
     private Double popularity;
     @Field("production_countries")
     private List<Country> productionCountries;
@@ -55,6 +56,7 @@ public class Movie implements Serializable {
     private String status;
     private Boolean promoted;
     private double weightedRating;
+    private Boolean pathUpdated;
 
 
 }

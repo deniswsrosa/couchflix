@@ -1,7 +1,7 @@
 package com.cb.fts.sample.entities;
 
 
-import jdk.nashorn.internal.ir.annotations.Ignore;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,6 +11,6 @@ public class BasicEntity {
 
     @Getter(PROTECTED)
     @Setter(PROTECTED)
-    @Ignore
+    @JsonIgnore
     protected String _class;
 }

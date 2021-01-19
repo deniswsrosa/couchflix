@@ -1,9 +1,9 @@
 package com.cb.fts.sample.entities;
 
-import com.couchbase.client.java.repository.annotation.Field;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.data.couchbase.core.mapping.Field;
 
 import java.io.Serializable;
 

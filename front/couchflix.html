@@ -471,9 +471,10 @@
       <div class="carousel-tile" class="imgLoading"><img height="375" widht="250"
           id="{{movie.id}}-poster"
           onclick="javascript:highlightBlock('{{movie.id}}')"
-          onerror="$('#{{movie.id}}-poster'.replace('::','\\:\\:')).attr('src', 'devfix-img-error.jpg');"
-         src="https://image.tmdb.org/t/p/w500{{movie.posterPath}}">
-       </div>
+
+         src="https://image.tmdb.org/t/p/w600_and_h900_bestv2{{movie.posterPath}}">
+
+      </div>
       {{/content}}
   </script>
 

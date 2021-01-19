@@ -51,7 +51,7 @@
 			<div class="slides">
 				<section>
 					<h1>Full-Text Search</h1>
-					<h3>Tips & Tricks</h3>
+					<h3>Workshop</h3>
 					<p>
 						<small>Created by <a href="https://twitter.com/deniswsrosa">Denis Rosa</a> and brought to you by <a href="https://couchbase.com">Couchbase</a></small>
 					</p>
@@ -66,7 +66,6 @@
 						<small>
 							<ul>
 								<li>Developer Advocate at Couchbase</li>
-								<li>Bleve enthusiast</li>
 								<li>+15 years as a Developer</li>
 								<li>Had my own SEO startup</li>
 								<li>Heavy user of Solr in the past</li>
@@ -75,17 +74,19 @@
 					</div>
 				</section>
 				<section>
-						<h3>Agenda</h3>
-						<img src="demo-gods-02b.jpg" height="300px"/>
-						<ul>
-							<li>Code, code, code!&nbsp;&nbsp;<small style="margin-top:15px"><a href="#">(pray for the demo gods!)</a></small></li>
-							<li>Few slides to explain core concepts</li>
-						</ul>
-					</small>
+						<h3>The naive way to match text</h3>
 				</section>
 
 				<section>
-					Let's say need to implement a Google-like movies's search. If we need to search for Batman's The Dark knight Trilogy, our N1QL query could look like the following:
+						Let's say we want to search for movies from Batman's The Dark knight Trilogy, our N1QL query could look like the following:
+
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “Dark Knight%”
+						</code></pre>
+				</section>
+
+				<section>
+					<strong class="highlight">Problem number 1:</strong> The movies are actually called "<strong>The</strong> Dark Knight", so searching just for "Dark Knight%" will yield 0 results.
 
 					<pre><code data-trim data-noescape>
 						Select * from movies where title like “Dark Knight%”
@@ -94,62 +95,237 @@
 
 
 				<section>
-					<strong class="highlight">1st Problem:</strong> The movies are actually called "<strong>The</strong> Dark Knight", so searching just for "Dark Knight%" will yield 0 results.
+
+					We can fix it by changing our query:
+
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “The Dark Knight%”
+						</code></pre>
+
+					or
 
 					<pre><code data-trim data-noescape>
 						Select * from movies where title like “%Dark Knight%”
 						</code></pre>
-
-					A wildcard in the beginning/end of the string will force a full table scan.
 				</section>
 
 				<section>
-					<strong class="highlight">2nd Problem:</strong> We also need to make our search case insensitive.
-
+					But in a real-world scenario, given the fact that we don't know what the users are going to search for, developers are likely to use the second option:
 					<pre><code data-trim data-noescape>
-						Select * from movies where LOWER(title) like LOWER(“%Dark Knight%”)
+						Select * from movies where title like “%Dark Knight%”
 						</code></pre>
+				</section>
 
-					Before each comparison we will need to convert it to lower first, which will make the query even slower.
+
+				<section>
+					Here is where the problems start to appear, a LIKE clause which starts and ends with a wildcard will require a <strong class="highlight">full table scan</strong>
+				</section>
+
+
+				<section>
+					<strong class="highlight">Let's make it worse...</strong>
 				</section>
 
 				<section>
-					What if we also need to:
+					Suppose we need to build an advanced movies search application. As we are in 2020, here are some basic requirements:
 					<ul>
 						<li>Handle typos</li>
-						<li>Search in multiple fields (director, description)</li>
+						<li>The query should be fast</li>
+						<li>Search in multiple fields (author, description)</li>
 						<li>Best results should be on the top of the list</li>
 					</ul>
 				</section>
 
 				<section>
-					<h3>That is why you need a <strong class="highlight">Search Engine</strong></h3>
+					<h3>How to handle typos: <strong class="highlight">Levenshtein Distance</strong></h3>
+					<small>Also known as <strong>Edit Distance</strong>, it is the number of transformations (deletions, insertions, or substitutions) required to transform a source string into the target one</small>
 				</section>
 
 				<section>
-					<h2>Adding a Search Engine is <strong class="highlight">painful</strong></h2>
+					<h3>Levenshtein Distance</h3>
 					<ul>
-						<li>Increase cost with servers</li>
-						<li>Increase infrastructure complexity</li>
-						<li>Code changes / Data Sync</li>
-						<li>The feature might not worth all the extra effort</li>
+						<li>book -> back = 2</li>
+						<li>knight -> night = 1</li>
 					</ul>
 				</section>
-				<section>
-					<h3 class="highlight">CB Full-Text Search</h3>
-					<small>Both Couchbase CE and EE already have a Search Engine internally called <strong class="highlight">Bleve</strong>.
-						All you need to do is to create your index and start using it.</small>
-					<img src="search-menu.png" height="400px"/>
 
+				<section>
+					<h3>Levenshtein Distance in MySQL</h3>
+					<pre><code data-trim data-noescape>
+							-- Levenshtein function
+							-- Source: https://openquery.com.au/blog/levenshtein-mysql-stored-function
+							-- Levenshtein reference: http://en.wikipedia.org/wiki/Levenshtein_distance
+
+							-- Arjen note: because the levenshtein value is encoded in a byte array, distance cannot exceed 255;
+							-- thus the maximum string length this implementation can handle is also limited to 255 characters.
+
+							DELIMITER $$
+							DROP FUNCTION IF EXISTS LEVENSHTEIN $$
+							CREATE FUNCTION LEVENSHTEIN(s1 VARCHAR(255) CHARACTER SET utf8, s2 VARCHAR(255) CHARACTER SET utf8)
+							  RETURNS INT
+							  DETERMINISTIC
+							  BEGIN
+								DECLARE s1_len, s2_len, i, j, c, c_temp, cost INT;
+								DECLARE s1_char CHAR CHARACTER SET utf8;
+								-- max strlen=255 for this function
+								DECLARE cv0, cv1 VARBINARY(256);
+
+								SET s1_len = CHAR_LENGTH(s1),
+									s2_len = CHAR_LENGTH(s2),
+									cv1 = 0x00,
+									j = 1,
+									i = 1,
+									c = 0;
+
+								IF (s1 = s2) THEN
+								  RETURN (0);
+								ELSEIF (s1_len = 0) THEN
+								  RETURN (s2_len);
+								ELSEIF (s2_len = 0) THEN
+								  RETURN (s1_len);
+								END IF;
+
+								WHILE (j <= s2_len) DO
+								  SET cv1 = CONCAT(cv1, CHAR(j)),
+									  j = j + 1;
+								END WHILE;
+
+								WHILE (i <= s1_len) DO
+								  SET s1_char = SUBSTRING(s1, i, 1),
+									  c = i,
+									  cv0 = CHAR(i),
+									  j = 1;
+
+								  WHILE (j <= s2_len) DO
+									SET c = c + 1,
+										cost = IF(s1_char = SUBSTRING(s2, j, 1), 0, 1);
+
+									SET c_temp = ORD(SUBSTRING(cv1, j, 1)) + cost;
+									IF (c > c_temp) THEN
+									  SET c = c_temp;
+									END IF;
+
+									SET c_temp = ORD(SUBSTRING(cv1, j+1, 1)) + 1;
+									IF (c > c_temp) THEN
+									  SET c = c_temp;
+									END IF;
+
+									SET cv0 = CONCAT(cv0, CHAR(c)),
+										j = j + 1;
+								  END WHILE;
+
+								  SET cv1 = cv0,
+									  i = i + 1;
+								END WHILE;
+
+								RETURN (c);
+							  END $$
+
+							DELIMITER ;
+
+						</code>
+					</pre>
+				</section>
+
+
+				<section>
+					<h3>Levenshtein Distance in MySQL</h3>
+					<pre><code data-trim data-noescape>
+						SELECT * FROM movies WHERE levenshtein(title, "dark knight")<=2 limit 3
+					</code>
+					</pre>
+					(full table scan)
+				</section>
+
+
+				<section>
+					<h3>BUT...</h3>
+					The full title of the movie is <strong class="highlight">The Dark Knight Rises</strong> which has a distance of 8 to "dark knight"
+				</section>
+
+
+				<section>
+					<h3>Going back to our requirements:</h3>
+					<ul>
+						<li style="text-decoration: line-through;">Handle typos</li>
+						<li style="text-decoration: line-through;">The query should be fast</li>
+						<li style="text-decoration: line-through;">Search in multiple fields (author, description)</li>
+						<li style="text-decoration: line-through;">Best results should be on the top of the list</li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>Why our advanced search failed?</h3>
+					<ul>
+						<li><smal>Applying the Levenshtein distance for the whole content instead the just target text</smal></li>
+						<li><smal>We don't know in advance which rows in the database might have fields with positive matches</smal></li>
+						<li><smal>No easy way to sort the by most relevant results</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3 class="highlight">The relational model is not designed for text search</h3>
+				</section>
+
+				<section>
+					<h3 ><strong class="highlight">That is why we need to use a Search Engine instead</strong></h3>
+				</section>
+
+				<section>
+					<h3 >Which SE should I use?</h3>
+					<ul>
+						<li><smal><Strong>Elastic Search:</Strong> using the Couchbase Connector</smal></li>
+						<li><smal><Strong>Couchbase FTS:</Strong> the one we will use on this workshop</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3 >Why Couchbase FTS?</h3>
+					<ul>
+						<li><smal>You can leverage the infrastructure of the database</smal></li>
+						<li><smal>No need to push the data to an external system</smal></li>
+						<li><smal>Seamless integration with N1Ql</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3 >Search Engine Features:</h3>
+					<ul>
+						<li><smal>Built-in fuzzy matching functions</smal></li>
+						<li><smal class="highlight">Inverted Indexes</smal></li>
+						<li><smal class="highlight">Scoring</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>Inverted Indexes</h3>
+					<img src="inverted-index.png" height="500px">
+				</section>
+
+				<section>
+					<h3>Scoring: TF/IDF</h3>
+					<strong>Term Frequency / Inverse Document Frequency</strong>
+					Rare words will score higher:
+					<smal class="highlight">"The"</smal>, "Dark", "Knight"<br>
+				</section>
+
+				<section>
+					<h3>Scoring: Pivoted Length Norm</h3>
+					Matches in small texts will rank higher then long ones
+				</section>
+
+
+				<section>
+					<h3>Ok! <br> That was the boring part.</h3>
 				</section>
 
 				<section>
 					<h2>Search</h2>
-					<p>It is NOT JUST about matching a text.<br/><strong class="highlight">Search is heavily sales-oriented.</strong></p>
+					<p>It is NOT about matching a text.<br/><strong class="highlight">Search is heavily sales-oriented.</strong></p>
 				</section>
 				<section>
 					<ul>
-						<li><strong class="highlight">Netflix:</strong> Convince you to watch movies/series</li>
+						<li><strong class="highlight">Netflix:</strong> Convince you to watch series</li>
 						<li><strong class="highlight">Google:</strong> Answer your question</li>
 						<li><strong class="highlight">Amazon:</strong> Show products you want to buy</li>
 					</ul>
@@ -161,24 +337,6 @@
 					</a>
 					<p>Don't forget to save user's queries!</p>
 				</section>
-
-
-				<section>
-					<h2>Core Concepts</h2>
-					<strong class="highlight">Inverted Indexes:</strong>
-					<img src="inverted-index.png" height="500px">
-				</section>
-				<section>
-					<h2>Core Concepts</h2>
-					<ul>
-						<li><strong class="highlight">Score:</strong> A number which is calculated according to how close the result is to the target term</li>
-						<li><strong class="highlight">TF/IDF:</strong> Rare words score higher</li>
-						<li><strong class="highlight">Edit Distance:</strong> minimum number of operations
-							required to transform one string into the other: Star -> Star<strong>t</strong></li>
-						<li><strong class="highlight">Pivoted Length Norm:</strong> Matches in small texts will rank higher then long ones</li>
-					</ul>
-				</section>
-
 				<section>
 					<h1>Let's start!</h1>
 				</section>
@@ -230,7 +388,7 @@
 
 				<section>
 					<h2><span class="highlight">Release Year</span></h2>
-					There is a big difference between a movie released in <strong>2020</strong> to a movie released in <strong>2018</strong>. But, do we care if a movie was
+					There is a big difference between a movie released in <strong>2019</strong> to a movie released in <strong>2017</strong>. But, do we care if a movie was
 					released in <strong>2004</strong> or <strong>2000</strong>?
 				</section>
 				<section>
@@ -308,9 +466,7 @@
 					<h3>Plan your Business Rules</h3><br>
 					<span class="highlight"><strong>Ex:</strong></span> promoted = <i>true</i>
 				</section>
-				<section>
-					<h3>Understanding the user intent is key</h3><br>
-				</section>
+
 				<section>
 					<h3>What if we also want to search for the name of the actor/actress?</h3><br>
 				</section>
@@ -319,11 +475,11 @@
 					Solr Text Tagger<br/>
 					Azure Cognitive Services, etc<br/>
 				</section>
-<!--				<section>-->
-<!--					<h3>TF/IDF and Pivoted Length Norm have some pitfalls</h3><br>-->
-<!--					<br/>-->
-<!--					Sometimes, the size of the text sometimes doesn't matter to you<br/>-->
-<!--				</section>-->
+				<section>
+					<h3>TF/IDF and Pivoted Length Norm have some pitfalls</h3><br>
+					<br/>
+					Sometimes, the size of the text sometimes doesn't matter to you<br/>
+				</section>
 				<section>
 					<h3>Tests</h3><br>
 					<br/>

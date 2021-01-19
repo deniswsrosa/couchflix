@@ -12,6 +12,6 @@ import java.util.List;
 @NoArgsConstructor
 public class Result implements Serializable {
 
-    private List<SearchResult> results;
+    private List<FTSResult> results;
     private List<Facet> facets;
 }
