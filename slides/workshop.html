@@ -1,0 +1,532 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>reveal.js</title>
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/blood.css">
+
+		<!-- Theme used for syntax highlighting of code -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<style>
+
+		.highlight {
+			color:#a23;
+		}
+
+		.left {
+		  left:-8.33%;
+		  text-align: left;
+		  float: left;
+		  width:50%;
+		  z-index:-10;
+		}
+
+		.right {
+		  left:31.25%;
+		  top: 75px;
+		  float: right;
+		  text-align: left;
+		  z-index:-10;
+		  width:50%;
+		}
+
+		</style>
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+				<section>
+					<h1>Full-Text Search</h1>
+					<h3>Workshop</h3>
+					<p>
+						<small>Created by <a href="https://twitter.com/deniswsrosa">Denis Rosa</a> and brought to you by <a href="https://couchbase.com">Couchbase</a></small>
+					</p>
+				</section>
+				<section>
+					<h3>About <span class="highlight">@deniswsrosa</span></h3>
+					<div class="left">
+						<img src="snow.jpg" height="500px"/>
+					</div>
+					<div class="right">
+						<br/><br/><br/>
+						<small>
+							<ul>
+								<li>Developer Advocate at Couchbase</li>
+								<li>+15 years as a Developer</li>
+								<li>Had my own SEO startup</li>
+								<li>Heavy user of Solr in the past</li>
+							</ul>
+						</small>
+					</div>
+				</section>
+				<section>
+						<h3>The naive way to match text</h3>
+				</section>
+
+				<section>
+						Let's say we want to search for movies from Batman's The Dark knight Trilogy, our N1QL query could look like the following:
+
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “Dark Knight%”
+						</code></pre>
+				</section>
+
+				<section>
+					<strong class="highlight">Problem number 1:</strong> The movies are actually called "<strong>The</strong> Dark Knight", so searching just for "Dark Knight%" will yield 0 results.
+
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “Dark Knight%”
+						</code></pre>
+				</section>
+
+
+				<section>
+
+					We can fix it by changing our query:
+
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “The Dark Knight%”
+						</code></pre>
+
+					or
+
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “%Dark Knight%”
+						</code></pre>
+				</section>
+
+				<section>
+					But in a real-world scenario, given the fact that we don't know what the users are going to search for, developers are likely to use the second option:
+					<pre><code data-trim data-noescape>
+						Select * from movies where title like “%Dark Knight%”
+						</code></pre>
+				</section>
+
+
+				<section>
+					Here is where the problems start to appear, a LIKE clause which starts and ends with a wildcard will require a <strong class="highlight">full table scan</strong>
+				</section>
+
+
+				<section>
+					<strong class="highlight">Let's make it worse...</strong>
+				</section>
+
+				<section>
+					Suppose we need to build an advanced movies search application. As we are in 2020, here are some basic requirements:
+					<ul>
+						<li>Handle typos</li>
+						<li>The query should be fast</li>
+						<li>Search in multiple fields (author, description)</li>
+						<li>Best results should be on the top of the list</li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>How to handle typos: <strong class="highlight">Levenshtein Distance</strong></h3>
+					<small>Also known as <strong>Edit Distance</strong>, it is the number of transformations (deletions, insertions, or substitutions) required to transform a source string into the target one</small>
+				</section>
+
+				<section>
+					<h3>Levenshtein Distance</h3>
+					<ul>
+						<li>book -> back = 2</li>
+						<li>knight -> night = 1</li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>Levenshtein Distance in MySQL</h3>
+					<pre><code data-trim data-noescape>
+							-- Levenshtein function
+							-- Source: https://openquery.com.au/blog/levenshtein-mysql-stored-function
+							-- Levenshtein reference: http://en.wikipedia.org/wiki/Levenshtein_distance
+
+							-- Arjen note: because the levenshtein value is encoded in a byte array, distance cannot exceed 255;
+							-- thus the maximum string length this implementation can handle is also limited to 255 characters.
+
+							DELIMITER $$
+							DROP FUNCTION IF EXISTS LEVENSHTEIN $$
+							CREATE FUNCTION LEVENSHTEIN(s1 VARCHAR(255) CHARACTER SET utf8, s2 VARCHAR(255) CHARACTER SET utf8)
+							  RETURNS INT
+							  DETERMINISTIC
+							  BEGIN
+								DECLARE s1_len, s2_len, i, j, c, c_temp, cost INT;
+								DECLARE s1_char CHAR CHARACTER SET utf8;
+								-- max strlen=255 for this function
+								DECLARE cv0, cv1 VARBINARY(256);
+
+								SET s1_len = CHAR_LENGTH(s1),
+									s2_len = CHAR_LENGTH(s2),
+									cv1 = 0x00,
+									j = 1,
+									i = 1,
+									c = 0;
+
+								IF (s1 = s2) THEN
+								  RETURN (0);
+								ELSEIF (s1_len = 0) THEN
+								  RETURN (s2_len);
+								ELSEIF (s2_len = 0) THEN
+								  RETURN (s1_len);
+								END IF;
+
+								WHILE (j <= s2_len) DO
+								  SET cv1 = CONCAT(cv1, CHAR(j)),
+									  j = j + 1;
+								END WHILE;
+
+								WHILE (i <= s1_len) DO
+								  SET s1_char = SUBSTRING(s1, i, 1),
+									  c = i,
+									  cv0 = CHAR(i),
+									  j = 1;
+
+								  WHILE (j <= s2_len) DO
+									SET c = c + 1,
+										cost = IF(s1_char = SUBSTRING(s2, j, 1), 0, 1);
+
+									SET c_temp = ORD(SUBSTRING(cv1, j, 1)) + cost;
+									IF (c > c_temp) THEN
+									  SET c = c_temp;
+									END IF;
+
+									SET c_temp = ORD(SUBSTRING(cv1, j+1, 1)) + 1;
+									IF (c > c_temp) THEN
+									  SET c = c_temp;
+									END IF;
+
+									SET cv0 = CONCAT(cv0, CHAR(c)),
+										j = j + 1;
+								  END WHILE;
+
+								  SET cv1 = cv0,
+									  i = i + 1;
+								END WHILE;
+
+								RETURN (c);
+							  END $$
+
+							DELIMITER ;
+
+						</code>
+					</pre>
+				</section>
+
+
+				<section>
+					<h3>Levenshtein Distance in MySQL</h3>
+					<pre><code data-trim data-noescape>
+						SELECT * FROM movies WHERE levenshtein(title, "dark knight")<=2 limit 3
+					</code>
+					</pre>
+					(full table scan)
+				</section>
+
+
+				<section>
+					<h3>BUT...</h3>
+					The full title of the movie is <strong class="highlight">The Dark Knight Rises</strong> which has a distance of 8 to "dark knight"
+				</section>
+
+
+				<section>
+					<h3>Going back to our requirements:</h3>
+					<ul>
+						<li style="text-decoration: line-through;">Handle typos</li>
+						<li style="text-decoration: line-through;">The query should be fast</li>
+						<li style="text-decoration: line-through;">Search in multiple fields (author, description)</li>
+						<li style="text-decoration: line-through;">Best results should be on the top of the list</li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>Why our advanced search failed?</h3>
+					<ul>
+						<li><smal>Applying the Levenshtein distance for the whole content instead the just target text</smal></li>
+						<li><smal>We don't know in advance which rows in the database might have fields with positive matches</smal></li>
+						<li><smal>No easy way to sort the by most relevant results</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3 class="highlight">The relational model is not designed for text search</h3>
+				</section>
+
+				<section>
+					<h3 ><strong class="highlight">That is why we need to use a Search Engine instead</strong></h3>
+				</section>
+
+				<section>
+					<h3 >Which SE should I use?</h3>
+					<ul>
+						<li><smal><Strong>Elastic Search:</Strong> using the Couchbase Connector</smal></li>
+						<li><smal><Strong>Couchbase FTS:</Strong> the one we will use on this workshop</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3 >Why Couchbase FTS?</h3>
+					<ul>
+						<li><smal>You can leverage the infrastructure of the database</smal></li>
+						<li><smal>No need to push the data to an external system</smal></li>
+						<li><smal>Seamless integration with N1Ql</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3 >Search Engine Features:</h3>
+					<ul>
+						<li><smal>Built-in fuzzy matching functions</smal></li>
+						<li><smal class="highlight">Inverted Indexes</smal></li>
+						<li><smal class="highlight">Scoring</smal></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>Inverted Indexes</h3>
+					<img src="inverted-index.png" height="500px">
+				</section>
+
+				<section>
+					<h3>Scoring: TF/IDF</h3>
+					<strong>Term Frequency / Inverse Document Frequency</strong>
+					Rare words will score higher:
+					<smal class="highlight">"The"</smal>, "Dark", "Knight"<br>
+				</section>
+
+				<section>
+					<h3>Scoring: Pivoted Length Norm</h3>
+					Matches in small texts will rank higher then long ones
+				</section>
+
+
+				<section>
+					<h3>Ok! <br> That was the boring part.</h3>
+				</section>
+
+				<section>
+					<h2>Search</h2>
+					<p>It is NOT about matching a text.<br/><strong class="highlight">Search is heavily sales-oriented.</strong></p>
+				</section>
+				<section>
+					<ul>
+						<li><strong class="highlight">Netflix:</strong> Convince you to watch series</li>
+						<li><strong class="highlight">Google:</strong> Answer your question</li>
+						<li><strong class="highlight">Amazon:</strong> Show products you want to buy</li>
+					</ul>
+				</section>
+				<section>
+					<h3>how users search</h3>
+					<a href="https://www.slideshare.net/randfish/keepng-up-wth-seo-n-2017-beyond/11-Keyword_Length_of_Search_Queries1Word">
+						<img src="queries-distribuition.png" height="300px">
+					</a>
+					<p>Don't forget to save user's queries!</p>
+				</section>
+				<section>
+					<h1>Let's start!</h1>
+				</section>
+
+				<section>
+					<h1>Shingle</h1><br>
+					<h3>"Star Wars Daisy Ridley"</h3>
+					<strong class="highlight">Star Wars</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/>
+					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong class="highlight">Wars Daisy</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/>
+					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong class="highlight">Daisy Ridley</strong>
+				</section>
+				<section>
+					<h1>Stemming</h1><br>
+					fishing, fished, and fisher --> <strong>fish</strong>
+				</section>
+				<section>
+					<h2>Ranking Factors</h2>
+					<ul>
+						<li><strong class="highlight">Google:</strong> Title, URL, Content, Backlinks, +350 items</li>
+						<li><strong class="highlight">Amazon:</strong> Description, Specifications, Photos, Customer Satisfaction, Conversion Rate</li>
+						<li><strong class="highlight">Bing:</strong> Title, URL, Content, Backlinks, etc</li>
+					</ul>
+				</section>
+				<section>
+					<h2>Types of Ranking Factors</h2>
+					<ul>
+						<li><strong class="highlight">Standard:</strong> general data about the item</li>
+						<li><strong class="highlight">Signals:</strong> how often users choose this result?</li>
+						<li><strong class="highlight">Personalization:</strong> which genres the user likes?</li>
+					</ul>
+				</section>
+				<section>
+					<a href="https://moz.com/local-search-ranking-factors">
+						<img src="google_ranking.png" height="600px"/>
+					</a>
+				</section>
+				<section>
+					<h3>Plan Your Ranking Factors and Weights. Ex:</h3>
+					<ul>
+						<li><strong class="highlight">Title:</strong> ~30%</li>
+						<li><strong class="highlight">Description:</strong> ~15%</li>
+						<li><strong class="highlight">Actors:</strong> ~20%</li>
+						<li><strong class="highlight">Directors:</strong> ~15%</li>
+						<li><strong class="highlight">Release Year:</strong> -15% to +10%</li>
+						<li><strong class="highlight">Popularity:</strong> -10% to +10%</li>
+						<li><strong class="highlight">Ratings:</strong> ???</li>
+					</ul>
+				</section>
+
+				<section>
+					<h2><span class="highlight">Release Year</span></h2>
+					There is a big difference between a movie released in <strong>2019</strong> to a movie released in <strong>2017</strong>. But, do we care if a movie was
+					released in <strong>2004</strong> or <strong>2000</strong>?
+				</section>
+				<section>
+					<h2>Decay Funcs &<br/>Gaussian Decays</h2>
+					<img src="decay-graph.png">
+				</section>
+				<section>
+					<h4><span class="highlight">Recommender Systems Specialization</span><br><strong>Coursera</strong></h4>
+					<a href="https://www.coursera.org/specializations/recommender-systems"><img src="decay.png"></a>
+				</section>
+				<section>
+					<h3>Bleve</h3>
+					We can emulate decays by building boosting ranges.
+				</section>
+				<section>
+					<pre><code data-trim data-noescape>
+						private DisjunctionQuery boostReleaseYearQuery() {
+							LocalDateTime now = LocalDateTime.now();
+							//movies older than which are up to 3 years old get a boost of 10%
+							NumericRangeQuery rangeQuery = SearchQuery.numericRange().field("release_year").boost(1.25);
+							rangeQuery.max(now.getYear());
+							rangeQuery.min(now.getYear()-4);
+
+							//movies which are from 4 to 8 years old, nothing will be slightly penalized
+							NumericRangeQuery penalizationQuery = SearchQuery.numericRange().field("release_year").boost(1.05);
+							penalizationQuery.max(now.getYear()-5);
+							penalizationQuery.min(now.getYear()-8);
+
+							//movies which are from 8 to 18 years old, nothing will be penalized in 10%
+							NumericRangeQuery penalization1Query = SearchQuery.numericRange().field("release_year").boost(0.90);
+							penalization1Query.max(now.getYear()-9);
+							penalization1Query.min(now.getYear()-18);
+
+							//movies which are from 8 to 18 years old, nothing will be penalized in 10%
+							NumericRangeQuery penalization2Query = SearchQuery.numericRange().field("release_year").boost(0.87);
+							penalization2Query.max(now.getYear()-19);
+							penalization2Query.min(0);
+
+							DisjunctionQuery yearDisjunction = SearchQuery.disjuncts(rangeQuery, penalizationQuery, penalization1Query, penalization2Query );
+
+							return yearDisjunction;
+						}
+					</code></pre>
+				</section>
+
+				<section>
+					<h1>Ratings???</h1>
+				</section>
+				<section>
+					A 5-star movie for me could be a 3-star movies for you. <strong>Normalize ratings according to how users rate.</strong>
+				</section>
+				<section>
+					A movie with <span class="highlight"><strong>20 votes</strong></span> and <span class="highlight"><strong>5 stars</strong></span>
+									<h1>vs</h1>
+					A movie with <span class="highlight"><strong>3500 votes</strong></span> and <span class="highlight"><strong>3.8 stars</strong></span>
+				</section>
+				<section>
+					<img src="rating.png" width="500px"><br/>
+					<br/>
+					<span class="highlight"><strong>p:</strong></span> Average rating of the movie from 0 to 5<br/>
+					<span class="highlight"><strong>q:</strong></span> Number of votes of the movie&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/>
+					<span class="highlight"><strong>Q:</strong></span> Average number of voter per movie&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/>
+				</section>
+				<section>
+					<h3>Ex:</h3>
+					<br/>
+					<ul style="list-style: none;">
+						<li><span class="highlight"><strong>Robot Chicken:</strong></span> 68 Votes, 6.9 Avg ranting = 1.725</strong><br/></li>
+					  <li><span class="highlight"><strong>Rogue One:</strong></span> 5111 Votes, 7.4 Avg ranting = 6.85</strong><br/></li>
+						<li><span class="highlight"><strong>Star Wars:</strong></span> 6778 Votes, 8.1 Avg ranting = 7.025</strong><br/></li>
+					</ul>
+				</section>
+
+				<section>
+					<h3>Plan your Business Rules</h3><br>
+					<span class="highlight"><strong>Ex:</strong></span> promoted = <i>true</i>
+				</section>
+
+				<section>
+					<h3>What if we also want to search for the name of the actor/actress?</h3><br>
+				</section>
+				<section>
+					<h3>Taxonomies / Entity Extraction</h3><br>
+					Solr Text Tagger<br/>
+					Azure Cognitive Services, etc<br/>
+				</section>
+				<section>
+					<h3>TF/IDF and Pivoted Length Norm have some pitfalls</h3><br>
+					<br/>
+					Sometimes, the size of the text sometimes doesn't matter to you<br/>
+				</section>
+				<section>
+					<h3>Tests</h3><br>
+					<br/>
+					The <span class="highlight"><strong>Cranfield Evaluation Method</strong></span> is a good strategy to implement tests<br>
+					Use Precision & Recall as a metric.<br>
+					Check out the Text Retrieval course on Coursera.<br/>
+				</section>
+				<section>
+					<h3>Black Hat</h3>
+					<br/>
+					Be careful with features that are directly influenced by users:<br>
+					<img src="keyword-stuffing.webp">
+				</section>
+				<section>
+					<h3>Further reading</h3>
+					<ul>
+						<li><strong>Bleve:</strong> blevesearch.com</li>
+						<li>Relevant Search: With Applications for Solr and Elasticsearch</li>
+						<li>Taming Text: How to Find, Organise, and Manipulate it</li>
+						<li>Solr in Action</li>
+						<li><strong>Couchbase:</strong> couchbase.com</li>
+					</ul>
+				</section>
+				<section>
+					<h1>Thank You</h1>
+					<br/>
+					<strong>@deniswsrosa</strong>
+				</section>
+			</div>
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+			// More info about config & dependencies:
+			// - https://github.com/hakimel/reveal.js#configuration
+			// - https://github.com/hakimel/reveal.js#dependencies
+			Reveal.initialize({
+				dependencies: [
+					{ src: 'plugin/markdown/marked.js' },
+					{ src: 'plugin/markdown/markdown.js' },
+					{ src: 'plugin/notes/notes.js', async: true },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+				],
+				transition: "convex"
+			});
+		</script>
+	</body>
+</html>

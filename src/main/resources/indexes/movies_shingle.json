@@ -1,0 +1,114 @@
+{
+  "name": "movies_shingle",
+  "type": "fulltext-index",
+  "params": {
+    "doc_config": {
+      "docid_prefix_delim": "",
+      "docid_regexp": "",
+      "mode": "type_field",
+      "type_field": "type"
+    },
+    "mapping": {
+      "analysis": {
+        "analyzers": {
+          "Custom_Analyzer": {
+            "token_filters": [
+              "stop_en",
+              "to_lower",
+              "shingle"
+            ],
+            "tokenizer": "unicode",
+            "type": "custom"
+          }
+        },
+        "token_filters": {
+          "shingle": {
+            "filler": "",
+            "max": 2,
+            "min": 2,
+            "output_original": true,
+            "separator": "",
+            "type": "shingle"
+          }
+        }
+      },
+      "default_analyzer": "standard",
+      "default_datetime_parser": "dateTimeOptional",
+      "default_field": "_all",
+      "default_mapping": {
+        "dynamic": true,
+        "enabled": false
+      },
+      "default_type": "_default",
+      "docvalues_dynamic": true,
+      "index_dynamic": false,
+      "store_dynamic": false,
+      "type_field": "_type",
+      "types": {
+        "movie": {
+          "dynamic": false,
+          "enabled": true,
+          "properties": {
+            "original_title": {
+              "enabled": true,
+              "dynamic": false,
+              "fields": [
+                {
+                  "analyzer": "Custom_Analyzer",
+                  "include_in_all": true,
+                  "include_term_vectors": true,
+                  "index": true,
+                  "name": "original_title",
+                  "store": true,
+                  "type": "text"
+                }
+              ]
+            },
+            "overview": {
+              "enabled": true,
+              "dynamic": false,
+              "fields": [
+                {
+                  "include_in_all": true,
+                  "include_term_vectors": true,
+                  "index": true,
+                  "name": "overview",
+                  "store": true,
+                  "type": "text"
+                }
+              ]
+            },
+            "title": {
+              "enabled": true,
+              "dynamic": false,
+              "fields": [
+                {
+                  "analyzer": "Custom_Analyzer",
+                  "include_in_all": true,
+                  "include_term_vectors": true,
+                  "index": true,
+                  "name": "title",
+                  "store": true,
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "store": {
+      "indexType": "scorch",
+      "kvStoreName": ""
+    }
+  },
+  "sourceType": "couchbase",
+  "sourceName": "movies",
+  "sourceUUID": "e61d11bf07c7343a7f602ca86312c374",
+  "sourceParams": {},
+  "planParams": {
+    "maxPartitionsPerPIndex": 171,
+    "numReplicas": 0
+  },
+  "uuid": "61633a9805d221c5"
+}
